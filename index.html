@@ -74,6 +74,11 @@ main{padding:16px 20px 60px}
 .row .v{text-align:right;flex:none;min-width:130px;font-variant-numeric:tabular-nums}
 .row .v .big{font-weight:600}
 .row .v .sm{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.lhead{display:flex;gap:16px;align-items:center;padding:7px 16px;background:#f7fafb;
+  border-bottom:1px solid var(--line);color:var(--ink3);font-size:11.5px;font-weight:700;letter-spacing:.05em}
+.lhead .n{width:26px;flex:none}
+.lhead .main{flex:1;min-width:0}
+.lhead .v{text-align:right;flex:none;min-width:130px;text-transform:uppercase}
 .up{color:var(--up)}.down{color:var(--down)}
 .chip{display:inline-block;background:#e8f3f2;color:#0c5a52;border-radius:5px;padding:1px 7px;font-size:12.5px}
 .chip.out{background:#fceeed;color:#98332a}
@@ -125,6 +130,16 @@ main{padding:16px 20px 60px}
 .mrow{padding:7px 0;border-bottom:1px solid var(--line2);font-size:14px}
 .mrow .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .mrow .r em{font-style:normal;font-size:12px}
+.mbox{margin:0 0 10px;padding:9px 11px 5px;background:#fbfdfd;border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:0 8px 8px 0}
+.mbox .mhead,.mbox .mrow{grid-template-columns:1fr 126px 100px}
+.mbox .mrow:last-of-type{border-bottom:0}
+.mmore{padding:7px 0 3px}
+.mmore button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:5px 11px;
+  cursor:pointer;font-size:12.5px;color:var(--ink2)}
+.mmore button:hover{border-color:var(--accent);color:var(--accent)}
+.prow .pn .car{color:var(--ink3);font-size:11px;margin-right:4px}
+.prow.sel .pn .car{color:var(--accent)}
 .mini{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line2);font-size:14px}
 .mini:last-child{border-bottom:0}
 .mini .r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -275,6 +290,16 @@ var CLSNOME=['Grupo Santa Cruz','Distribuidora','Rede ou CD próprio'];
 var st={tab:'far',met:'rs',q:'',linha:'',uf:new Set(),setor:-1,
         ord:'c',drill:-1,cli:-1,n:SHOW,uni:'dist',sel:new Set()};
 
+/* período do recorte — mude só estas duas linhas quando virar o mês */
+var MES_FIM=7, ANO_FIM=26;
+var MESNOME=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+function rotPeriodo(){return 'YTD '+MESNOME[MES_FIM-1]+'/'+(ANO_FIM<10?'0':'')+ANO_FIM;}
+var MESLONGO=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function periodoTexto(){return 'de janeiro a '+MESLONGO[MES_FIM-1];}
+function anoAnt(){return 2000+ANO_FIM-1;}
+function cabPer(t){return '<div class="lhead"><div class="n"></div><div class="main"></div>'+
+  '<div class="v">'+(t||rotPeriodo())+'</div></div>';}
+
 function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function fmt(n){return Math.round(n).toLocaleString('pt-BR');}
@@ -361,8 +386,8 @@ function compute(){
 function setLine(i){return i<0?'<em>sem setor</em>':esc(pessoa(i));}
 function renderFar(){
   var L=R.list,ate=Math.min(st.n,L.length);
-  $('note').innerHTML='<b>'+fmt(L.length)+'</b> farmácias · <b>'+rsK(R.totalC)+'</b> de janeiro a julho ('+
-    vr(R.totalC,R.totalA)+' contra o mesmo período de 2025)'+
+  $('note').innerHTML='<b>'+fmt(L.length)+'</b> farmácias · <b>'+rsK(R.totalC)+'</b> '+periodoTexto()+' ('+
+    vr(R.totalC,R.totalA)+' contra o mesmo período de '+anoAnt()+')'+
     ' · <span class="chip gray">'+rotulo()+'</span>';
   if(!L.length){
     var msg=R.baseN?
@@ -370,7 +395,7 @@ function renderFar(){
       '<button class="btn" style="margin-top:12px" onclick="verTudo()">Ver com todos os provedores</button>':
       'Nenhuma farmácia com essa busca.';
     $('view').innerHTML='<div class="list"><div class="empty">'+msg+'</div></div>';return;}
-  var h='<div class="list">';
+  var h='<div class="list">'+cabPer();
   for(var x=0;x<ate;x++){
     var i=L[x],r=D.pdv[i],fora=R.ytdC[i]-R.grpC[i],part=R.ytdC[i]?R.grpC[i]/R.ytdC[i]:0,tp=R.topP[i],inc=R.totC[i]-R.totA[i];
     h+='<div class="row" onclick="abrirPdv('+i+')"><div class="n">'+(x+1)+'</div><div class="main">'+
@@ -400,7 +425,7 @@ function renderProv(){
   if(Math.round(redes))part.push('redes e CDs <b>'+rsK(redes)+'</b>');
   $('note').innerHTML='<b>'+idx.length+'</b> provedores · '+part.join(' · ')+
     '. Toque para ver os maiores clientes.';
-  var h='<div class="list">';
+  var h='<div class="list">'+cabPer();
   idx.forEach(function(p,x){
     h+='<div class="row" onclick="abrirProv('+p+')"><div class="n">'+(x+1)+'</div><div class="main">'+
        '<div class="t">'+esc(D.prov[p])+' <span class="chip'+(CLS[p]===0?'':' gray')+'">'+CLSNOME[CLS[p]]+'</span></div>'+
@@ -436,8 +461,8 @@ function renderDrill(){
   var h='<button class="back" onclick="voltar()">← Todos os provedores</button>'+
     '<h2 class="hd">'+esc(D.prov[p])+'</h2>'+
     '<div class="hdsub"><span class="chip'+(CLS[p]===0?'':' gray')+'">'+CLSNOME[CLS[p]]+'</span> &nbsp; '+
-    rs(d.tc)+' de janeiro a julho ('+vr(d.tc,d.ta)+') · '+fmt(keys.length)+' farmácias compram por aqui</div>'+
-    '<div class="split"><div><div class="cap">MAIORES CLIENTES</div><div class="list">';
+    rs(d.tc)+' '+periodoTexto()+' ('+vr(d.tc,d.ta)+') · '+fmt(keys.length)+' farmácias compram por aqui</div>'+
+    '<div class="split"><div><div class="cap">MAIORES CLIENTES</div><div class="list">'+cabPer();
   var ate=Math.min(st.n,keys.length);
   for(var x=0;x<ate;x++){
     var i=keys[x],r=D.pdv[i],share=R.ytdC[i]?d.cli[i].c/R.ytdC[i]:0;
@@ -480,7 +505,7 @@ function renderSet(){
   var idx=[];for(var i=0;i<D.set.length;i++)if(R.setC[i]||R.setA[i])idx.push(i);
   idx.sort(function(a,b){return R.setC[b]-R.setC[a];});
   $('note').innerHTML='Carteira de cada vendedor no recorte. Cada venda entra na linha da marca. Toque para ver as farmácias do setor.';
-  var h='<div class="list">';
+  var h='<div class="list">'+cabPer();
   idx.forEach(function(s,x){
     h+='<div class="row" onclick="verSetor('+s+')"><div class="n">'+(x+1)+'</div><div class="main">'+
        '<div class="t">'+esc(pessoa(s))+' <span class="chip gray">'+(D.setM[s][1]?'Infinity':'Prime')+'</span></div>'+
@@ -497,7 +522,7 @@ function verSetor(s){
 }
 
 /* ---------- ficha ---------- */
-var DW={i:-1,sel:-1,sort:'rs',dir:-1,provs:null,marsAll:null,marsBy:null};
+var DW={i:-1,sel:-1,sort:'rs',dir:-1,all:false,provs:null,marsAll:null,marsBy:null};
 function acc(o,k){return o[k]||(o[k]={c:0,a:0,uc:0,ua:0});}
 function abrirPdv(i){
   var provs={},marsAll={},marsBy={};
@@ -510,7 +535,7 @@ function abrirPdv(i){
     if(!marsBy[p])marsBy[p]={};
     var q=acc(marsBy[p],m);q.c+=F.c[k];q.a+=F.a[k];q.uc+=F.uc[k];q.ua+=F.ua[k];
   }
-  DW={i:i,sel:-1,sort:st.met,dir:-1,provs:provs,marsAll:marsAll,marsBy:marsBy};
+  DW={i:i,sel:-1,sort:st.met,dir:-1,all:false,provs:provs,marsAll:marsAll,marsBy:marsBy};
   var r=D.pdv[i];
   $('dwh').innerHTML='<div><h2>'+esc(r[0])+'</h2><div style="color:#4a626d;font-size:13.5px;margin-top:3px">'+
     esc(r[1]?r[1]+' · ':'')+esc(D.cid[r[2]])+' / '+D.uf[r[3]]+' · '+esc(D.band[r[4]])+'</div>'+
@@ -554,7 +579,7 @@ function unid(v){return fmt(v)+' un';}
 function renderFicha(){
   var i=DW.i,r=D.pdv[i],geral=totalDe(-1),grupo=totalDe(-2);
   var h='<div class="facts">'+
-    '<div class="fact"><div class="k">Compra de jan a jul</div><div class="v">'+money(geral.c)+
+    '<div class="fact"><div class="k">Compra '+rotPeriodo()+'</div><div class="v">'+money(geral.c)+
       ' <span style="font-size:13px;font-weight:400">'+vr(geral.c,geral.a)+'</span>'+
       '<br><span style="font-size:12.5px;font-weight:400;color:#8ba0aa">'+unid(geral.uc)+' '+vr(geral.uc,geral.ua)+'</span></div></div>'+
     '<div class="fact"><div class="k">Pelo grupo</div><div class="v">'+pct(geral.c?grupo.c/geral.c:0)+
@@ -567,10 +592,13 @@ function renderFicha(){
     '</div>';
 
   function linhaProv(id,nome,sub,v,varia){
-    return '<div class="prow'+(DW.sel===id?' sel':'')+'" onclick="selProv('+id+')"><div>'+
-      '<div class="pn">'+nome+'</div>'+(sub?'<div class="ps">'+sub+'</div>':'')+'</div>'+
+    var ab=(DW.sel===id);
+    return '<div class="prow'+(ab?' sel':'')+'" data-pid="'+id+'" onclick="selProv('+id+')"><div>'+
+      '<div class="pn"><span class="car">'+(ab?'\u25be':'\u25b8')+'</span>'+nome+'</div>'+
+      (sub?'<div class="ps">'+sub+'</div>':'')+'</div>'+
       '<div class="pv">'+money(v.c)+(varia?' '+vr(v.c,v.a):'')+
-      '<br><span style="color:#8ba0aa;font-size:12.5px">'+unid(v.uc)+(varia?' '+vr(v.uc,v.ua):'')+'</span></div></div>';
+      '<br><span style="color:#8ba0aa;font-size:12.5px">'+unid(v.uc)+(varia?' '+vr(v.uc,v.ua):'')+'</span></div></div>'+
+      (ab?tabelaMarcas(id):'');
   }
   var pk=Object.keys(DW.provs).map(Number);
   var gsel=pk.filter(function(p){return CLS[p]===0;});
@@ -592,29 +620,43 @@ function renderFicha(){
     });
   });
 
-  var titulo=DW.sel===-1?'O QUE COMPRA NO TOTAL':DW.sel===-2?'O QUE COMPRA PELO GRUPO SANTA CRUZ':
-             'O QUE COMPRA POR '+D.prov[DW.sel].toUpperCase();
-  var mm=somaMarcas(DW.sel),tt=totalDe(DW.sel);
+  $('dwb').innerHTML=h;
+}
+var MSHOW=8;
+function tabelaMarcas(sel){
+  var mm=somaMarcas(sel),tt=totalDe(sel);
   var mk=Object.keys(mm).map(Number);
   var key=DW.sort==='rs'?'c':'uc';
   mk.sort(function(a,b){return (mm[b][key]-mm[a][key])*(DW.dir<0?1:-1);});
-  h+='<div class="cap" style="margin-top:24px">'+esc(titulo)+'</div>';
-  h+='<div class="mhead"><span>MARCA ('+mk.length+')</span>'+
-     '<button class="'+(DW.sort==='rs'?'on':'')+'" onclick="ordFicha(\'rs\')">R$'+(DW.sort==='rs'?(DW.dir<0?' ▼':' ▲'):'')+'</button>'+
-     '<button class="'+(DW.sort==='un'?'on':'')+'" onclick="ordFicha(\'un\')">UNID.'+(DW.sort==='un'?(DW.dir<0?' ▼':' ▲'):'')+'</button></div>';
+  var lim=DW.all?mk.length:Math.min(mk.length,MSHOW);
+  var h='<div class="mbox" onclick="event.stopPropagation()">'+
+    '<div class="mhead"><span>MARCA ('+mk.length+')</span>'+
+    '<button class="'+(DW.sort==='rs'?'on':'')+'" onclick="ordFicha(\'rs\')">R$'+(DW.sort==='rs'?(DW.dir<0?' \u25bc':' \u25b2'):'')+'</button>'+
+    '<button class="'+(DW.sort==='un'?'on':'')+'" onclick="ordFicha(\'un\')">UNID.'+(DW.sort==='un'?(DW.dir<0?' \u25bc':' \u25b2'):'')+'</button></div>';
   if(!mk.length)h+='<div class="mrow"><span style="color:#8ba0aa">Sem compra por aqui.</span><span></span><span></span></div>';
-  mk.forEach(function(m){
-    var v=mm[m];
+  for(var x=0;x<lim;x++){
+    var m=mk[x],v=mm[m];
     h+='<div class="mrow"><span>'+esc(D.mar[m])+' <span class="chip gray">'+(D.marL[m]?'Infinity':'Prime')+'</span></span>'+
        '<span class="r">'+money(v.c)+' <em>'+vr(v.c,v.a)+'</em></span>'+
        '<span class="r">'+unid(v.uc)+' <em>'+vr(v.uc,v.ua)+'</em></span></div>';
-  });
+  }
+  if(mk.length>lim)h+='<div class="mmore"><button onclick="verTodasMarcas()">ver as outras '+(mk.length-lim)+' marcas</button></div>';
+  else if(DW.all&&mk.length>MSHOW)h+='<div class="mmore"><button onclick="verTodasMarcas()">mostrar só as '+MSHOW+' maiores</button></div>';
   h+='<div class="mrow" style="border-bottom:0;font-weight:600;padding-top:9px">'+
      '<span>Total</span><span class="r">'+money(tt.c)+'</span><span class="r">'+unid(tt.uc)+'</span></div>';
-  $('dwb').innerHTML=h;
+  return h+'</div>';
 }
-function selProv(p){DW.sel=(DW.sel===p?-1:p);renderFicha();
-  var b=document.querySelector('#dwb .prow.sel');if(b)b.scrollIntoView({block:'nearest'});}
+function verTodasMarcas(){DW.all=!DW.all;renderFicha();}
+function selProv(p){
+  var topo=$('dwb').scrollTop;
+  DW.sel=(DW.sel===p?-9:p);DW.all=false;renderFicha();
+  $('dwb').scrollTop=topo;
+  if(DW.sel!==p)return;
+  var y=$('dwb').querySelector('.prow[data-pid="'+p+'"]');
+  if(!y)return;
+  var box=$('dwb').getBoundingClientRect(),r=y.getBoundingClientRect();
+  if(r.top<box.top+8||r.top>box.bottom-110)$('dwb').scrollTop+=(r.top-box.top-8);
+}
 function ordFicha(k){if(DW.sort===k)DW.dir=-DW.dir;else{DW.sort=k;DW.dir=-1;}renderFicha();}
 function fechar(){$('dw').classList.remove('on');$('bd').classList.remove('on');}
 
@@ -679,7 +721,7 @@ function baixar(){
   var rows,i;
   if(st.tab==='far'){
     rows=[['#','Farmacia','Bairro','Cidade','UF','Bandeira','CNPJ','Setor Prime','Setor Infinity',
-      'Compra jan-jul ('+un()+')','Mesmo periodo 2025','Pelo grupo','Fora do grupo','Provedor principal','Qtd provedores']];
+      'Compra '+rotPeriodo()+' ('+un()+')','Mesmo periodo '+anoAnt(),'Pelo grupo','Fora do grupo','Provedor principal','Qtd provedores']];
     R.list.forEach(function(p,x){var r=D.pdv[p];
       rows.push([x+1,r[0],r[1],D.cid[r[2]],D.uf[r[3]],D.band[r[4]],r[7],
         r[5]<0?'':D.set[r[5]],r[6]<0?'':D.set[r[6]],Math.round(R.totC[p]),Math.round(R.totA[p]),
@@ -688,7 +730,7 @@ function baixar(){
     return csv(rows,'feira_farmacias_'+st.met+'.csv');
   }
   if(st.tab==='set'){
-    rows=[['#','Setor','Codigo','Distrital','Linha','Compra jan-jul ('+un()+')','Mesmo periodo 2025','Farmacias']];
+    rows=[['#','Setor','Codigo','Distrital','Linha','Compra '+rotPeriodo()+' ('+un()+')','Mesmo periodo '+anoAnt(),'Farmacias']];
     var idx=[];for(i=0;i<D.set.length;i++)if(R.setC[i]||R.setA[i])idx.push(i);
     idx.sort(function(a,b){return R.setC[b]-R.setC[a];});
     idx.forEach(function(s,x){rows.push([x+1,pessoa(s),cod(s),distDe(s),D.setM[s][1]?'Infinity':'Prime',
@@ -697,7 +739,7 @@ function baixar(){
   }
   if(st.drill>=0&&window.__drill){
     var o=window.__drill,ks=Object.keys(o.d.cli).map(Number).sort(function(a,b){return o.d.cli[b].c-o.d.cli[a].c;});
-    rows=[['#','Farmacia','Cidade','UF','CNPJ','Setor Prime','Setor Infinity','Compra neste provedor ('+un()+')','Mesmo periodo 2025','Total da loja','% aqui']];
+    rows=[['#','Farmacia','Cidade','UF','CNPJ','Setor Prime','Setor Infinity','Compra neste provedor ('+un()+')','Mesmo periodo '+anoAnt(),'Total da loja','% aqui']];
     ks.forEach(function(p,x){var r=D.pdv[p];
       rows.push([x+1,r[0],D.cid[r[2]],D.uf[r[3]],r[7],r[5]<0?'':D.set[r[5]],r[6]<0?'':D.set[r[6]],
         Math.round(o.d.cli[p].c),Math.round(o.d.cli[p].a),Math.round(R.ytdC[p]),
