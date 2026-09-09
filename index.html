@@ -377,7 +377,7 @@ aside select:hover{border-color:var(--ink3)}
 
   <div class="col">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Buscar por nome, cidade ou CNPJ (com ou sem pontos)">
+      <input type="search" id="q" placeholder="Buscar por farmácia, cidade, CNPJ ou nome do PV">
       <span class="seg" id="ord">
         <button data-o="c" class="on">Maiores</button>
         <button data-o="grupo">Pelo grupo</button>
@@ -402,6 +402,7 @@ aside select:hover{border-color:var(--ink3)}
 <script>
 'use strict';
 var D=null,F=null,NP=0,NF=0,CLS=null,R={},SHOW=60;
+var SETQ=null,PDVQ=null;
 var GRUPO_PFX=['SANTA CRUZ','PANPHARMA','CIRURGICA ST'];
 var DIST_PFX=['PROFARMA','GENESIO','ANBFARMA','PHARMA LOG','SERVIMED','D. CENTER','DISTR ','MAFRA','DASSETTE'];
 var CLSNOME=['Grupo Santa Cruz','Distribuidora','Rede ou CD próprio'];
@@ -439,15 +440,34 @@ function distIdx(i){return i<0?-1:D.setM[i][0];}
 function distDe(i){return i<0?'':D.dist[D.setM[i][0]].slice(9).trim();}
 function pfx(n,arr){for(var i=0;i<arr.length;i++)if(n.indexOf(arr[i])===0)return true;return false;}
 
+/* ---------- busca: índice de texto (farmácia, cidade, CNPJ e nome do PV) ---------- */
+function norm(s){return String(s==null?'':s).toLowerCase()
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+function termos(s){s=norm(s).trim();return s?s.split(/\s+/):[];}
+function bate(txt,ts){for(var i=0;i<ts.length;i++)if(txt.indexOf(ts[i])<0)return false;return true;}
+/* SETQ[i] = código + nome do PV + distrital; PDVQ[i] = tudo que é buscável do PDV */
+function indexar(){
+  SETQ=D.set.map(function(s,ix){
+    return norm(s.slice(0,6)+' '+s.slice(9)+' '+D.dist[D.setM[ix][0]]);});
+  PDVQ=new Array(NP);
+  for(var i=0;i<NP;i++){
+    var r=D.pdv[i];
+    PDVQ[i]=norm(r[0]+' '+r[1]+' '+D.cid[r[2]]+' '+D.uf[r[3]]+' '+r[7])+
+      (r[5]>=0?' '+SETQ[r[5]]:'')+(r[6]>=0?' '+SETQ[r[6]]:'');
+  }
+}
+
 function compute(){
-  var P=D.pdv,n=NP,base=new Uint8Array(n),q=st.q.trim().toLowerCase();
-  var qd=q.replace(/[^0-9]/g,'');
+  var P=D.pdv,n=NP,base=new Uint8Array(n),ts=termos(st.q);
+  var qd=st.q.replace(/[^0-9]/g,'');
+  var qSet=[];
+  if(ts.length&&SETQ)for(var s0=0;s0<SETQ.length;s0++)if(bate(SETQ[s0],ts))qSet.push(s0);
   for(var i=0;i<n;i++){
     var r=P[i];
     if(st.uf.size&&!st.uf.has(r[3]))continue;
     if(st.setor>=0&&r[5]!==st.setor&&r[6]!==st.setor)continue;
-    if(q){
-      var achou=(r[0]+' '+r[1]+' '+D.cid[r[2]]+' '+r[7]).toLowerCase().indexOf(q)>=0;
+    if(ts.length){
+      var achou=bate(PDVQ[i],ts);
       if(!achou&&qd.length>=3&&r[7].indexOf(qd)>=0)achou=true;
       if(!achou)continue;
     }
@@ -499,18 +519,26 @@ function compute(){
   else if(st.ord==='fora')list.sort(function(a,b){return (totC[b]-grpC[b])-(totC[a]-grpC[a]);});
   else if(st.ord==='var')list.sort(function(a,b){return (totC[b]-totA[b])-(totC[a]-totA[a]);});
   else list.sort(function(a,b){return totC[b]-totC[a];});
-  R={base:base,baseN:baseN,list:list,totC:totC,totA:totA,ytdC:ytdC,grpC:grpC,topP:topP,nProv:nProv,usa:usa,ok:ok,
+  R={base:base,baseN:baseN,qSet:qSet,list:list,totC:totC,totA:totA,ytdC:ytdC,grpC:grpC,topP:topP,nProv:nProv,usa:usa,ok:ok,
      provC:provC,provA:provA,provN:provN,setC:setC,setA:setA,setN:setN,
      totalC:totalC,totalA:totalA,grupoC:grupoC,distTot:distTot,ytdTot:ytdTot};
 }
 
 /* ---------- farmácias ---------- */
+/* avisa quando a busca casou com o nome de um PV (mostra a carteira dele) */
+function chipPV(){
+  var q=R.qSet;if(!q||!q.length)return '';
+  var nomes=q.slice(0,3).map(function(s){
+    return cod(s)+' · '+pessoa(s)+(D.setM[s][1]?' (Infinity)':' (Prime)');}).join(' · ');
+  if(q.length>3)nomes+=' +'+(q.length-3);
+  return ' · <span class="chip">PV: '+esc(nomes)+'</span>';
+}
 function setLine(i){return i<0?'<em>sem setor</em>':esc(pessoa(i));}
 function renderFar(){
   var L=R.list,ate=Math.min(st.n,L.length);
   $('note').innerHTML='<b>'+fmt(L.length)+'</b> farmácias · <b>'+rsK(R.totalC)+'</b> '+periodoTexto()+' ('+
     vr(R.totalC,R.totalA)+' contra o mesmo período de '+anoAnt()+')'+
-    ' · <span class="chip gray">'+rotulo()+'</span>';
+    ' · <span class="chip gray">'+rotulo()+'</span>'+chipPV();
   if(!L.length){
     var msg=R.baseN?
       fmt(R.baseN)+' farmácia'+(R.baseN>1?'s batem':' bate')+' com a busca, mas nenhuma compra pelos provedores marcados.<br>'+
@@ -897,6 +925,7 @@ function checkbox(el,items,ref){
 }
 function boot(dados){
   D=dados.D;F=dados.F;NF=dados.NF;NP=D.pdv.length;
+  indexar();
   CLS=new Int8Array(D.prov.length);
   for(var i=0;i<D.prov.length;i++){var n=D.prov[i];
     CLS[i]=pfx(n,GRUPO_PFX)?0:(pfx(n,DIST_PFX)||D.provB[i]>=10?1:2);}
