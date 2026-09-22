@@ -678,9 +678,13 @@ function acc(o,k){return o[k]||(o[k]={c:0,a:0,uc:0,ua:0});}
 function abrirPdv(i){
   var provs={},marsAll={},marsBy={};
   var pi=F.pi,pr=F.pr,mr=F.mr;
+  /* a ficha segue o filtro de Linha da lateral, igual a lista: com Prime marcado, so entram
+     as marcas Prime (antes a ficha somava as duas linhas mesmo com o filtro ligado) */
+  var lmk=(st.linha==='')?null:+st.linha;
   for(var k=0;k<NF;k++){
     if(pi[k]!==i)continue;
     var p=pr[k],m=mr[k];
+    if(lmk!==null&&D.marL[m]!==lmk)continue;
     var e=acc(provs,p);e.c+=F.c[k];e.a+=F.a[k];e.uc+=F.uc[k];e.ua+=F.ua[k];
     var g=acc(marsAll,m);g.c+=F.c[k];g.a+=F.a[k];g.uc+=F.uc[k];g.ua+=F.ua[k];
     if(!marsBy[p])marsBy[p]={};
@@ -689,7 +693,8 @@ function abrirPdv(i){
   DW={i:i,sel:-1,sort:st.met,dir:-1,all:false,provs:provs,marsAll:marsAll,marsBy:marsBy};
   var r=D.pdv[i];
   $('dwh').innerHTML='<div><h2>'+esc(r[0])+'</h2><div style="color:var(--ink2);font-size:13.5px;margin-top:3px">'+
-    esc(r[1]?r[1]+' · ':'')+esc(D.cid[r[2]])+' / '+D.uf[r[3]]+' · '+esc(D.band[r[4]])+'</div>'+
+    esc(r[1]?r[1]+' · ':'')+esc(D.cid[r[2]])+' / '+D.uf[r[3]]+' · '+esc(D.band[r[4]])+
+    (lmk!==null?' <span class="chip">só linha '+(lmk?'Infinity':'Prime')+'</span>':'')+'</div>'+
     '<div class="cnpj"><span>'+(/^\d{14}$/.test(r[7])?'CNPJ ':'Código ')+esc(cnpjFmt(r[7]))+'</span>'+
     '<button onclick="copiar(\''+esc(r[7])+'\',this)">copiar</button></div></div>';
   renderFicha();
@@ -944,7 +949,8 @@ function boot(dados){
     [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});render();drawProv();});
   $('linha').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
     st.linha=b.dataset.l;st.n=SHOW;st.drill=-1;
-    [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});render();drawProv();});
+    [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});render();drawProv();
+    if(DW.i>=0&&$('dw').classList.contains('on')){var sc=$('dwb').scrollTop;abrirPdv(DW.i);$('dwb').scrollTop=sc;}});
   $('ord').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;
     st.ord=b.dataset.o;st.n=SHOW;
     [].forEach.call(this.children,function(x){x.classList.toggle('on',x===b);});render();});
@@ -1218,7 +1224,7 @@ function sortDict(d){
 
 async function lerMDTR(file,onProg){
   var cid=new Dict(),uf=new Dict(),band=new Dict(),dist=new Dict(),set=new Dict(),mar=new Dict();
-  var setDist=[],setMar=[],marN100=[],marTot=[];
+  var setDist=[],setMar=[],marN100=[],marTot=[],smN=new Map();
   var pdvIx=new Map(),pNome=[],pBairro=[],pCid=[],pUf=[],pBand=[],pCnpj=[],pS1=[],pS2=[];
   var H=null,cDist,cSet,cMar,cBand,cPdv,linhas=0;
 
@@ -1255,6 +1261,7 @@ async function lerMDTR(file,onProg){
 
     var si=set.id(txt(r[cSet]));
     if(setDist.length<=si){setDist[si]=dist.id(dTxt);setMar[si]=mi;}
+    var ksm=si*4096+mi;smN.set(ksm,(smN.get(ksm)||0)+1);
 
     var pi=pdvIx.get(cnpj);
     if(pi===undefined){
@@ -1269,7 +1276,46 @@ async function lerMDTR(file,onProg){
   if(!linhas)throw new Error('nenhuma linha lida do MDTR');
   return {cid:cid,uf:uf,band:band,dist:dist,set:set,mar:mar,setDist:setDist,setMar:setMar,
           marN100:marN100,marTot:marTot,pdvIx:pdvIx,pNome:pNome,pBairro:pBairro,pCid:pCid,
-          pUf:pUf,pBand:pBand,pCnpj:pCnpj,pS1:pS1,pS2:pS2,linhas:linhas};
+          pUf:pUf,pBand:pBand,pCnpj:pCnpj,pS1:pS1,pS2:pS2,linhas:linhas,smN:smN};
+}
+
+/* ---------- linha de cada marca e de cada setor ----------
+   Antes a marca virava Infinity quando a maioria das linhas dela vinha de distrital com
+   final 100. Isso falha onde a distrital nao segue o padrao: na Reg 8 a 803000 tem setores
+   das duas linhas, a 805000 e toda Infinity e a 804200 e Prime. Com isso NEUMOSIN, vendida
+   so por setores Infinity, caia em Prime.
+   Agora a separacao sai da estrutura do proprio arquivo: cada setor so vende marcas da
+   propria linha, entao setores ligados por marcas em comum formam um grupo, e as marcas de
+   um grupo sao da linha dele. O padrao do final 100 so e usado no fim, no grupo inteiro,
+   para dizer qual dos dois grupos e o Infinity. */
+function linhasPorGrupo(B){
+  var ns=B.set.list.length,nm=B.mar.list.length;
+  var pai=new Int32Array(ns+nm);for(var i=0;i<pai.length;i++)pai[i]=i;
+  function raiz(x){while(pai[x]!==x){pai[x]=pai[pai[x]];x=pai[x];}return x;}
+  function une(a,b){a=raiz(a);b=raiz(b);if(a!==b)pai[a]=b;}
+  /* marca vendida por um setor so ocasionalmente (menos de 2% das linhas da marca e menos
+     de 2% das linhas do setor) nao liga os grupos: evita que um lancamento isolado cole as
+     duas linhas numa so */
+  var totS=new Float64Array(ns),totM=new Float64Array(nm);
+  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;totS[si]+=n;totM[mi]+=n;});
+  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;
+    if(n/totM[mi]>=.02||n/totS[si]>=.02)une(si,ns+mi);});
+  var grupos={},g;
+  for(i=0;i<ns;i++){g=raiz(i);(grupos[g]||(grupos[g]={s:[],v100:0,n:0})).s.push(i);}
+  for(g in grupos){var G=grupos[g];G.s.forEach(function(si){
+    var d=B.dist.list[B.setDist[si]]||'';if(d.slice(3,6)==='100')G.v100+=totS[si];G.n+=totS[si];});}
+  var setLin=new Int8Array(ns),gL={};
+  for(g in grupos){gL[g]=grupos[g].n&&grupos[g].v100/grupos[g].n>.5?1:0;grupos[g].s.forEach(function(si){setLin[si]=gL[g];});}
+  // marca: linha dos setores que a vendem, pesada pela quantidade de linhas
+  var vm=new Float64Array(nm*2);
+  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;vm[mi*2+setLin[si]]+=n;});
+  var marL=new Int8Array(nm);
+  for(i=0;i<nm;i++)marL[i]=vm[i*2+1]>vm[i*2]?1:0;
+  // setor: confirma pela linha das marcas que vende
+  var vs=new Float64Array(ns*2);
+  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;vs[si*2+marL[mi]]+=n;});
+  for(i=0;i<ns;i++)if(vs[i*2]!==vs[i*2+1])setLin[i]=vs[i*2+1]>vs[i*2]?1:0;
+  return{marL:marL,setLin:setLin,nGrupos:Object.keys(grupos).length};
 }
 
 function Grow(){this.a=new Float64Array(1<<16);this.n=0;}
@@ -1309,11 +1355,8 @@ async function lerProvedores(file,B,prov,provBand,onProg){
 
 /* junta tudo no formato que o app consome */
 function montar(B,fRs,fUn){
-  var nm=B.mar.list.length,marL=new Int8Array(nm);
-  for(var i=0;i<nm;i++)marL[i]=(B.marTot[i]&&B.marN100[i]/B.marTot[i]>.5)?1:0;
-
-  var ns=B.set.list.length,setLin=new Int8Array(ns);
-  for(i=0;i<ns;i++)setLin[i]=marL[B.setMar[i]];
+  var nm=B.mar.list.length,ns=B.set.list.length,i;
+  var LP=linhasPorGrupo(B),marL=LP.marL,setLin=LP.setLin;
 
   var S=sortDict(B.set),C=sortDict(B.cid),U=sortDict(B.uf),
       BD=sortDict(B.band),DI=sortDict(B.dist),MA=sortDict(B.mar);
