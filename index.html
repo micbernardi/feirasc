@@ -1280,42 +1280,113 @@ async function lerMDTR(file,onProg){
 }
 
 /* ---------- linha de cada marca e de cada setor ----------
-   Antes a marca virava Infinity quando a maioria das linhas dela vinha de distrital com
-   final 100. Isso falha onde a distrital nao segue o padrao: na Reg 8 a 803000 tem setores
-   das duas linhas, a 805000 e toda Infinity e a 804200 e Prime. Com isso NEUMOSIN, vendida
-   so por setores Infinity, caia em Prime.
-   Agora a separacao sai da estrutura do proprio arquivo: cada setor so vende marcas da
-   propria linha, entao setores ligados por marcas em comum formam um grupo, e as marcas de
-   um grupo sao da linha dele. O padrao do final 100 so e usado no fim, no grupo inteiro,
-   para dizer qual dos dois grupos e o Infinity. */
-function linhasPorGrupo(B){
-  var ns=B.set.list.length,nm=B.mar.list.length;
-  var pai=new Int32Array(ns+nm);for(var i=0;i<pai.length;i++)pai[i]=i;
+   Funciona com o MDTR de qualquer regional, sem depender do numero da distrital (na Reg 8 a
+   distrital com final 100 e Infinity, na Reg 5 a 503100 e Prime, e ha distritais mistas).
+   1) Separacao: cada setor so vende marcas da propria linha, entao setores ligados por
+      marcas em comum formam um grupo, e as marcas de um grupo sao da linha dele.
+   2) Nome de cada grupo (Prime ou Infinity), nesta ordem:
+      a) marcas de referencia do portfolio: marcas grandes que sempre foram da mesma linha
+         em todas as regionais conferidas. Elas so dao o nome ao grupo; a linha das outras
+         marcas continua saindo do arquivo;
+      b) PDV atendido por dois setores: um de cada linha, entao um grupo sem nome fica com a
+         linha oposta a do grupo com quem divide PDV;
+      c) a escolha feita antes neste navegador para o mesmo grupo de marcas;
+      d) pergunta na tela, mostrando as marcas do grupo. */
+var ANCORA_PRIME=['BARIAT XR','LONGFLEX','VIVOSSO PRO','VIVOSSO','SOPI','DELA COLIN','PHOSFOENEMA',
+  'COD','GAZIA','HELLEVA','PROS','RENOVI B','SIMECO PLUS','ROXETIN','HIXIZINE','VAGICAND'];
+var ANCORA_INF=['ALONG-C','NAZZO','TAM','TAM XR','TROL','ASEA','DUOFLAM','RISPERIDON','PERCOF',
+  'DIUPRESS','AMYTRIL','BENZETACIL','VORXE','APICE','FLUXENE','CIBEX'];
+function gruposDoArquivo(B){
+  var ns=B.set.list.length,nm=B.mar.list.length,i;
+  var pai=new Int32Array(ns+nm);for(i=0;i<pai.length;i++)pai[i]=i;
   function raiz(x){while(pai[x]!==x){pai[x]=pai[pai[x]];x=pai[x];}return x;}
   function une(a,b){a=raiz(a);b=raiz(b);if(a!==b)pai[a]=b;}
-  /* marca vendida por um setor so ocasionalmente (menos de 2% das linhas da marca e menos
-     de 2% das linhas do setor) nao liga os grupos: evita que um lancamento isolado cole as
-     duas linhas numa so */
+  /* marca vendida por um setor so de vez em quando (menos de 2% das linhas da marca e do
+     setor) nao liga grupos: um caso isolado nao cola as duas linhas numa so */
   var totS=new Float64Array(ns),totM=new Float64Array(nm);
   B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;totS[si]+=n;totM[mi]+=n;});
   B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;
     if(n/totM[mi]>=.02||n/totS[si]>=.02)une(si,ns+mi);});
-  var grupos={},g;
-  for(i=0;i<ns;i++){g=raiz(i);(grupos[g]||(grupos[g]={s:[],v100:0,n:0})).s.push(i);}
-  for(g in grupos){var G=grupos[g];G.s.forEach(function(si){
-    var d=B.dist.list[B.setDist[si]]||'';if(d.slice(3,6)==='100')G.v100+=totS[si];G.n+=totS[si];});}
-  var setLin=new Int8Array(ns),gL={};
-  for(g in grupos){gL[g]=grupos[g].n&&grupos[g].v100/grupos[g].n>.5?1:0;grupos[g].s.forEach(function(si){setLin[si]=gL[g];});}
-  // marca: linha dos setores que a vendem, pesada pela quantidade de linhas
+  var idx={},lista=[],gDe=new Int32Array(ns);
+  for(i=0;i<ns;i++){var r=raiz(i);if(idx[r]===undefined){idx[r]=lista.length;lista.push({s:[],marcas:{},n:0,L:-1,como:''});}
+    gDe[i]=idx[r];lista[idx[r]].s.push(i);}
+  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096,G=lista[gDe[si]];
+    G.marcas[mi]=(G.marcas[mi]||0)+n;G.n+=n;});
+  return{lista:lista,gDe:gDe};
+}
+function assinaturaGrupo(B,G){
+  return Object.keys(G.marcas).map(Number).sort(function(a,b){return G.marcas[b]-G.marcas[a];})
+    .slice(0,5).map(function(m){return B.mar.list[m];}).sort().join('|');
+}
+function perguntarLinhaGrupo(B,G,nG){
+  return new Promise(function(res){
+    var top=Object.keys(G.marcas).map(Number).sort(function(a,b){return G.marcas[b]-G.marcas[a];}).slice(0,12)
+      .map(function(m){return esc(B.mar.list[m]);}).join(', ');
+    var ex=G.s.slice(0,5).map(function(si){return esc(B.set.list[si]);}).join('<br>');
+    var bg=document.createElement('div');
+    bg.style.cssText='position:fixed;inset:0;background:rgba(7,36,44,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:10vh 16px';
+    bg.innerHTML='<div style="background:#fff;border-radius:12px;max-width:560px;width:100%;padding:22px 24px;box-shadow:0 30px 80px rgba(0,0,0,.25);color:var(--ink);font-size:14px;line-height:1.5">'
+      +'<div style="font-size:18px;font-weight:700;margin-bottom:6px">Qual é a linha deste grupo?</div>'
+      +'<div style="color:var(--ink2);font-size:13px;margin-bottom:14px">O MDTR não traz a linha. Pelo arquivo, os setores se dividem em '+nG
+      +' grupos que vendem marcas diferentes, e este não tem marca de referência para dizer a linha sozinho. A resposta fica guardada neste navegador.</div>'
+      +'<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)">Marcas que mais aparecem</div>'
+      +'<div style="font-weight:600;margin:3px 0 12px">'+top+'</div>'
+      +'<div style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)">'+G.s.length+' setores, por exemplo</div>'
+      +'<div style="margin:3px 0 18px;font-size:13px">'+ex+'</div>'
+      +'<div style="display:flex;gap:10px;justify-content:flex-end">'
+      +'<button data-l="0" style="padding:9px 18px;border-radius:8px;border:0;background:var(--deep);color:#fff;font-weight:600;cursor:pointer">Prime</button>'
+      +'<button data-l="1" style="padding:9px 18px;border-radius:8px;border:0;background:var(--deep);color:#fff;font-weight:600;cursor:pointer">Infinity</button></div></div>';
+    document.body.appendChild(bg);
+    [].forEach.call(bg.querySelectorAll('button[data-l]'),function(b){b.onclick=function(){bg.remove();res(+b.dataset.l);};});
+  });
+}
+async function linhasDoArquivo(B,perguntar){
+  var ns=B.set.list.length,nm=B.mar.list.length,i;
+  var GR=gruposDoArquivo(B),lista=GR.lista,gDe=GR.gDe;
+  var pos={};ANCORA_PRIME.forEach(function(n){pos[n]=0;});ANCORA_INF.forEach(function(n){pos[n]=1;});
+  // a) marcas de referencia
+  lista.forEach(function(G){
+    var v=[0,0];
+    for(var m in G.marcas){var L=pos[B.mar.list[m]];if(L!==undefined)v[L]+=G.marcas[m];}
+    var t=v[0]+v[1];
+    if(t&&Math.max(v[0],v[1])/t>=.8){G.L=v[1]>v[0]?1:0;G.como='referência';}
+  });
+  // b) PDV com setor de dois grupos: grupos de linhas opostas
+  var op=lista.map(function(){return {};});
+  for(i=0;i<B.pS1.length;i++){
+    var a=B.pS1[i],b=B.pS2[i];if(a<0||b<0)continue;
+    var ga=gDe[a],gb=gDe[b];if(ga===gb)continue;
+    op[ga][gb]=(op[ga][gb]||0)+1;op[gb][ga]=(op[gb][ga]||0)+1;
+  }
+  function propaga(){
+    for(var volta=0;volta<lista.length;volta++){
+      var mudou=false;
+      lista.forEach(function(G,k){
+        if(G.L>=0)return;
+        var v=[0,0];for(var o in op[k])if(lista[o].L>=0)v[1-lista[o].L]+=op[k][o];
+        if(v[0]!==v[1]){G.L=v[1]>v[0]?1:0;G.como='PDV em comum';mudou=true;}
+      });
+      if(!mudou)break;
+    }
+  }
+  propaga();
+  // c) escolha guardada e d) pergunta
+  var guard={};try{guard=JSON.parse(localStorage.getItem('feira_linha_grupos')||'{}');}catch(e){}
+  for(var k=0;k<lista.length;k++){
+    var G=lista[k];if(G.L>=0)continue;
+    var sig=assinaturaGrupo(B,G);
+    if(guard[sig]===0||guard[sig]===1){G.L=guard[sig];G.como='escolha guardada';}
+    else if(perguntar){G.L=await perguntar(B,G,lista.length);G.como='escolha na tela';guard[sig]=G.L;
+      try{localStorage.setItem('feira_linha_grupos',JSON.stringify(guard));}catch(e){}}
+    else{G.L=0;G.como='sem referência';}
+    propaga();
+  }
+  var setLin=new Int8Array(ns);for(i=0;i<ns;i++)setLin[i]=lista[gDe[i]].L;
+  // marca: linha dos setores que a vendem
   var vm=new Float64Array(nm*2);
   B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;vm[mi*2+setLin[si]]+=n;});
-  var marL=new Int8Array(nm);
-  for(i=0;i<nm;i++)marL[i]=vm[i*2+1]>vm[i*2]?1:0;
-  // setor: confirma pela linha das marcas que vende
-  var vs=new Float64Array(ns*2);
-  B.smN.forEach(function(n,k){var si=Math.floor(k/4096),mi=k%4096;vs[si*2+marL[mi]]+=n;});
-  for(i=0;i<ns;i++)if(vs[i*2]!==vs[i*2+1])setLin[i]=vs[i*2+1]>vs[i*2]?1:0;
-  return{marL:marL,setLin:setLin,nGrupos:Object.keys(grupos).length};
+  var marL=new Int8Array(nm);for(i=0;i<nm;i++)marL[i]=vm[i*2+1]>vm[i*2]?1:0;
+  return{marL:marL,setLin:setLin,grupos:lista.map(function(G){return{setores:G.s.length,L:G.L,como:G.como};})};
 }
 
 function Grow(){this.a=new Float64Array(1<<16);this.n=0;}
@@ -1356,7 +1427,7 @@ async function lerProvedores(file,B,prov,provBand,onProg){
 /* junta tudo no formato que o app consome */
 function montar(B,fRs,fUn){
   var nm=B.mar.list.length,ns=B.set.list.length,i;
-  var LP=linhasPorGrupo(B),marL=LP.marL,setLin=LP.setLin;
+  var LP=B.LP,marL=LP.marL,setLin=LP.setLin;
 
   var S=sortDict(B.set),C=sortDict(B.cid),U=sortDict(B.uf),
       BD=sortDict(B.band),DI=sortDict(B.dist),MA=sortDict(B.mar);
@@ -1425,6 +1496,7 @@ function juntarFatos(fRs,fUn,remapMar,prov,provBand){
 async function construir(fileMdtr,fileRs,fileUn,prog){
   prog('mdtr',0);
   var B=await lerMDTR(fileMdtr,function(p){prog('mdtr',p);});
+  B.LP=await linhasDoArquivo(B,typeof document!=='undefined'?perguntarLinhaGrupo:null);
   prog('mdtr',1);
   var prov=new Dict(),provBand=[];
   prog('rs',0);
