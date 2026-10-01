@@ -144,6 +144,11 @@ aside select:hover{border-color:var(--ink3)}
 .row .v .big .num{font-weight:600;font-size:15px;text-align:right}
 .row .v .big .dlt{font-size:12.5px;text-align:right}
 .row .v .sm{font-size:12.5px;color:var(--ink2);margin-top:5px;text-align:right}
+/* principal provedor da loja, embaixo do total */
+.topp{margin-top:6px;margin-left:auto;max-width:100%;width:max-content;background:var(--tint);border-radius:5px;
+  padding:4px 8px 4px;text-align:right;line-height:1.3}
+.topp .tpn{font-size:12.5px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.topp .tpv{font-family:var(--mono);font-size:11.5px;color:var(--ink2);letter-spacing:-.02em;white-space:nowrap}
 /* participação do grupo na compra da loja */
 .shr{height:3px;background:var(--line2);border-radius:2px;margin-top:8px;overflow:hidden}
 .shr>i{display:block;height:100%;width:var(--w);background:var(--accent);border-radius:2px}
@@ -343,6 +348,12 @@ aside select:hover{border-color:var(--ink3)}
       <button data-m="un">Unidades</button>
     </div>
 
+    <div id="perBox" hidden>
+    <h3>Período</h3>
+    <select id="fper"></select>
+    <div class="hintline" id="perHint"></div>
+    </div>
+
     <h3>Linha</h3>
     <div class="seg" id="linha">
       <button data-l="" class="on">Todas</button>
@@ -409,8 +420,28 @@ var CLSNOME=['Grupo Santa Cruz','Distribuidora','Rede ou CD próprio'];
 var st={tab:'far',met:'rs',q:'',linha:'',uf:new Set(),setor:-1,
         ord:'c',drill:-1,cli:-1,n:SHOW,uni:'dist',sel:new Set()};
 
-/* período do recorte — mude só estas duas linhas quando virar o mês */
-var MES_FIM=7, ANO_FIM=26;
+/* período do recorte: vem do nome dos arquivos (ex.: BASE_PROVEDORES_AGO_..., MDTR_..._AGOSTO_...);
+   se nenhum nome trouxer o mês, usa o mês anterior ao de hoje. Dá para trocar na lateral. */
+var MES_FIM=7, ANO_FIM=26, PER_ORIGEM='';
+var MES_TOK={JAN:1,JANEIRO:1,FEV:2,FEVEREIRO:2,FEB:2,MAR:3,MARCO:3,ABR:4,ABRIL:4,APR:4,MAI:5,MAIO:5,MAY:5,
+  JUN:6,JUNHO:6,JUL:7,JULHO:7,AGO:8,AGOSTO:8,AUG:8,SET:9,SETEMBRO:9,SEP:9,OUT:10,OUTUBRO:10,OCT:10,
+  NOV:11,NOVEMBRO:11,DEZ:12,DEZEMBRO:12,DEC:12};
+function detectarPeriodo(nomes){
+  var hoje=new Date(),mes=0,ano=0,de='';
+  nomes.forEach(function(nome){
+    if(!nome||mes)return;
+    var tk=String(nome).replace(/\.[^.]+$/,'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toUpperCase().split(/[^A-Z0-9]+/);
+    for(var i=0;i<tk.length;i++){
+      var m=/^([A-Z]+)(\d{2}|\d{4})?$/.exec(tk[i]);
+      if(m&&MES_TOK[m[1]]){mes=MES_TOK[m[1]];de=nome;if(m[2])ano=+m[2]%100;break;}
+    }
+    if(mes&&!ano)for(var j=0;j<tk.length;j++)if(/^20[2-4]\d$/.test(tk[j])){ano=+tk[j]%100;break;}
+  });
+  if(!mes){mes=hoje.getMonth()||12;de='';}
+  if(!ano){ano=hoje.getFullYear()%100;if(mes>hoje.getMonth()+1)ano--;}
+  return {m:mes,a:ano,de:de};
+}
 var MESNOME=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 function rotPeriodo(){return 'YTD '+MESNOME[MES_FIM-1]+'/'+(ANO_FIM<10?'0':'')+ANO_FIM;}
 var MESLONGO=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
@@ -521,7 +552,7 @@ function compute(){
   else list.sort(function(a,b){return totC[b]-totC[a];});
   R={base:base,baseN:baseN,qSet:qSet,list:list,totC:totC,totA:totA,ytdC:ytdC,grpC:grpC,topP:topP,nProv:nProv,usa:usa,ok:ok,
      provC:provC,provA:provA,provN:provN,setC:setC,setA:setA,setN:setN,
-     totalC:totalC,totalA:totalA,grupoC:grupoC,distTot:distTot,ytdTot:ytdTot};
+     totalC:totalC,totalA:totalA,grupoC:grupoC,distTot:distTot,ytdTot:ytdTot,topV:topV};
 }
 
 /* ---------- farmácias ---------- */
@@ -548,22 +579,38 @@ function renderFar(){
   var h='<div class="list">'+cabPer(null,'Farmácia');
   for(var x=0;x<ate;x++){
     var i=L[x],r=D.pdv[i],fora=R.ytdC[i]-R.grpC[i],part=R.ytdC[i]?R.grpC[i]/R.ytdC[i]:0,tp=R.topP[i],inc=R.totC[i]-R.totA[i];
+    var tpart=R.ytdC[i]&&tp>=0?R.topV[i]/R.ytdC[i]:0;
     h+='<div class="row" onclick="abrirPdv('+i+')"><div class="n">'+(x+1)+'</div><div class="main">'+
        '<div class="t">'+esc(r[0])+'</div>'+
        '<div class="s">'+esc(D.cid[r[2]])+' / '+D.uf[r[3]]+' &nbsp;·&nbsp; '+setLine(r[5])+' &nbsp;/&nbsp; '+setLine(r[6])+'</div>'+
-       '<div class="s">'+(tp>=0?esc(D.prov[tp])+(R.nProv[i]>1?' e mais '+(R.nProv[i]-1):''):'—')+'</div>'+
-       '<div class="shr" title="'+pct(part)+' da compra da loja vem do grupo" style="--w:'+Math.round(part*100)+'%"><i></i></div></div>'+
-       '<div class="v">'+celVal(R.totC[i],R.totA[i])+'<div class="sm">'+
-       (st.ord==='fora'?'<span class="chip out">'+rsK(fora)+' fora do grupo</span>'
-        :st.ord==='grupo'?'<span class="chip">'+rsK(R.grpC[i])+' pelo grupo · '+pct(part)+'</span>'
-        :st.ord==='var'?'<span class="chip'+(inc>=0?'':' out')+'">'+sinal(inc)+'</span>'
-                       :'<span class="chip">'+rsK(R.grpC[i])+' pelo grupo</span>')+'</div></div></div>';
+       '<div class="s">'+outrosProv(i,tp)+'</div>'+
+       '<div class="shr" title="'+pct(tpart)+' da compra da loja vem do principal provedor" style="--w:'+Math.round(tpart*100)+'%"><i></i></div></div>'+
+       '<div class="v">'+celVal(R.totC[i],R.totA[i])+
+       (tp>=0?'<div class="topp" title="Principal provedor da loja"><div class="tpn">'+esc(D.prov[tp])+'</div>'+
+         '<div class="tpv">'+rsK(R.topV[i])+' · '+pct(tpart)+' da loja</div></div>':'')+
+       (st.ord==='fora'?'<div class="sm"><span class="chip out">'+rsK(fora)+' fora do grupo</span></div>'
+        :st.ord==='grupo'?'<div class="sm"><span class="chip">'+rsK(R.grpC[i])+' pelo grupo · '+pct(part)+'</span></div>'
+        :st.ord==='var'?'<div class="sm"><span class="chip'+(inc>=0?'':' out')+'">'+sinal(inc)+'</span></div>':'')+
+       '</div></div>';
   }
   h+='</div>';
   if(ate<L.length)h+='<div class="more"><button class="btn" onclick="mais()">Ver mais 60</button></div>';
   $('view').innerHTML=h;
 }
 function mais(){st.n+=60;renderFar();}
+/* demais provedores da loja, em ordem de compra (segue métrica e linha, como o principal) */
+var PST=null;
+function outrosProv(i,tp){
+  if(tp<0)return '<em>sem compra</em>';
+  if(R.nProv[i]<=1)return '<em>compra só por este provedor</em>';
+  var lmk=(st.linha==='')?null:+st.linha,fc=st.met==='rs'?F.c:F.uc,v={},k;
+  for(k=PST[i];k<PST[i+1];k++){
+    if(lmk!==null&&D.marL[F.mr[k]]!==lmk)continue;
+    var p=F.pr[k];if(p===tp)continue;v[p]=(v[p]||0)+fc[k];}
+  var ks=Object.keys(v).map(Number).sort(function(a,b){return v[b]-v[a];});
+  var mostra=ks.slice(0,2).map(function(p){return esc(D.prov[p]);}).join(', ');
+  return '<em>também:</em> '+mostra+(ks.length>2?' e mais '+(ks.length-2):'');
+}
 
 /* ---------- provedores ---------- */
 function renderProv(){
@@ -878,12 +925,13 @@ function baixar(){
   var rows,i;
   if(st.tab==='far'){
     rows=[['#','Farmacia','Bairro','Cidade','UF','Bandeira','CNPJ','Setor Prime','Setor Infinity',
-      'Compra '+rotPeriodo()+' ('+un()+')','Mesmo periodo '+anoAnt(),'Pelo grupo','Fora do grupo','Provedor principal','Qtd provedores']];
+      'Compra '+rotPeriodo()+' ('+un()+')','Mesmo periodo '+anoAnt(),'Pelo grupo','Fora do grupo','Provedor principal','Compra no principal','% principal','Qtd provedores']];
     R.list.forEach(function(p,x){var r=D.pdv[p];
       rows.push([x+1,r[0],r[1],D.cid[r[2]],D.uf[r[3]],D.band[r[4]],r[7],
         r[5]<0?'':D.set[r[5]],r[6]<0?'':D.set[r[6]],Math.round(R.totC[p]),Math.round(R.totA[p]),
         Math.round(R.grpC[p]),Math.round(R.totC[p]-R.grpC[p]),
-        R.topP[p]>=0?D.prov[R.topP[p]]:'',R.nProv[p]]);});
+        R.topP[p]>=0?D.prov[R.topP[p]]:'',Math.round(R.topV[p]),
+        (R.ytdC[p]?R.topV[p]/R.ytdC[p]:0).toFixed(4).replace('.',','),R.nProv[p]]);});
     return csv(rows,'feira_farmacias_'+st.met+'.csv');
   }
   if(st.tab==='set'){
@@ -931,6 +979,16 @@ function checkbox(el,items,ref){
 function boot(dados){
   D=dados.D;F=dados.F;NF=dados.NF;NP=D.pdv.length;
   indexar();
+  PST=new Int32Array(NP+1);
+  for(var k0=0;k0<NF;k0++)PST[F.pi[k0]+1]++;
+  for(var p0=0;p0<NP;p0++)PST[p0+1]+=PST[p0];
+  var ph='';for(var mm=1;mm<=12;mm++)ph+='<option value="'+mm+'"'+(mm===MES_FIM?' selected':'')+'>Janeiro a '+MESLONGO[mm-1]+'/'+(ANO_FIM<10?'0':'')+ANO_FIM+'</option>';
+  $('fper').innerHTML=ph;
+  /* o seletor só aparece quando nenhum nome de arquivo trouxe o mês */
+  $('perBox').hidden=!!PER_ORIGEM;
+  $('perHint').textContent='Nenhum arquivo traz o mês no nome; confira o período.';
+  $('fper').addEventListener('change',function(){MES_FIM=+this.value;render();
+    if(DW.i>=0&&$('dw').classList.contains('on'))renderFicha();});
   CLS=new Int8Array(D.prov.length);
   for(var i=0;i<D.prov.length;i++){var n=D.prov[i];
     CLS[i]=pfx(n,GRUPO_PFX)?0:(pfx(n,DIST_PFX)||D.provB[i]>=10?1:2);}
@@ -1577,6 +1635,8 @@ async function montarTudo(){
   aviso('montando a base… os arquivos não saem do seu computador');
   var t0=Date.now();
   try{
+    var per=detectarPeriodo([SLOTS.rs.name,SLOTS.un.name,SLOTS.mdtr.name]);
+    MES_FIM=per.m;ANO_FIM=per.a;PER_ORIGEM=per.de;
     var dados=await construir(SLOTS.mdtr,SLOTS.rs,SLOTS.un,function(k,p){barra(k,p);});
     document.getElementById('sub').textContent=
       dados.D.pdv.length.toLocaleString('pt-BR')+' PDVs · '+dados.D.prov.length+' provedores · '+
